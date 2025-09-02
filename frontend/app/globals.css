@@ -1,0 +1,10 @@
+/* frontend/app/globals.css */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
