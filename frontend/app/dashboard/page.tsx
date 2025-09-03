@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import CreateOrgForm from "@/components/CreateOrgForm";
-import CreditButton from "@/components/CreditButton";
+import CreditControls from "@/components/CreditControls";
+import OwnerClaimButton from "@/components/OwnerClaimButton";
 
 export default async function Dashboard() {
   const supabase = supabaseServer();
@@ -9,12 +10,19 @@ export default async function Dashboard() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
 
-   // Obtener membership vía RPC (más confiable)
-  const { data: memRpc } = await supabase.rpc("get_my_membership");
-  let orgId: string | null = (Array.isArray(memRpc) && memRpc.length) ? (memRpc[0] as any).org_id : null;
-  let balance = 0;
+  // Usar RPC robusto
+  const { data: orgRpc } = await supabase.rpc("get_my_org");
+  const orgId: string | null = orgRpc ? (orgRpc as unknown as string) : null;
 
+  let balance = 0;
+  let isOwner = false;
   if (orgId) {
+    // ¿Eres owner?
+    const { data: ownerUuid } = await supabase.rpc("get_org_owner", { p_org: orgId });
+    const { data: { user: u } } = await supabase.auth.getUser();
+    if (ownerUuid && u?.id && ownerUuid === u.id) {
+     isOwner = true;
+   }
     const { data } = await supabase
       .from("credit_ledger")
       .select("delta")
@@ -29,18 +37,21 @@ export default async function Dashboard() {
     <main className="p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Panel</h1>
       <p>Hola, {user.email}</p>
+
       {orgId ? (
         <>
           <p className="text-lg">
             Créditos disponibles: <span className="font-bold">{balance}</span>
           </p>
-          <CreditButton orgId={orgId} />
+          <CreditControls orgId={orgId} initialBalance={balance} isOwner={isOwner} />
+            <OwnerClaimButton orgId={orgId} />
+          {/* Aquí puedes añadir más UI del dashboard */}
         </>
       ) : (
         <>
           <p className="text-red-500">⚠ No perteneces a ninguna organización</p>
           <CreateOrgForm />
-       </>
+        </>
       )}
     </main>
   );

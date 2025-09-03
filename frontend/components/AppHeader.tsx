@@ -5,25 +5,20 @@ import SupabaseStatusClient from "./SupabaseStatusClient";
 export default async function AppHeader() {
   const supabase = supabaseServer();
 
-  // Usuario
-const { data: { user } } = await supabase.auth.getUser();
-  // Organización del usuario
-  let member: { org_id: string } | null = null;
-  if (user) {
-    const { data } = await supabase
-      .from("members")
-      .select("org_id")
-      .eq("user_id", user.id)
-      .single();
-   member = data ?? null;
-  }
-  let balance = 0;
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Obtener orgId vía RPC robusto
   let orgId: string | null = null;
+  if (user) {
+    const { data: orgRpc, error: orgErr } = await supabase.rpc("get_my_org");
+    if (!orgErr && orgRpc) {
+      orgId = orgRpc as unknown as string; // la función retorna uuid escalar
+    }
+  }
 
-  if (user && member?.org_id) {
-    orgId = member.org_id as string;
-
-    // Sumar delta del ledger para obtener saldo
+  // Calcular balance solo si hay org
+  let balance = 0;
+  if (user && orgId) {
     const { data: ledger, error } = await supabase
       .from("credit_ledger")
       .select("delta")
@@ -44,7 +39,7 @@ const { data: { user } } = await supabase.auth.getUser();
               Hola, {user.email}
             </span>
           ) : (
-           <span className="hidden text-sm text-gray-500 sm:inline">
+            <span className="hidden text-sm text-gray-500 sm:inline">
               Invitado
             </span>
           )}
@@ -55,16 +50,15 @@ const { data: { user } } = await supabase.auth.getUser();
           <div className="rounded-full border px-3 py-1 text-sm">
             Créditos:{" "}
             <span className="font-semibold">
-              {user ? balance : "—"}
+              {user ? (orgId ? balance : "—") : "—"}
             </span>
           </div>
 
-
           {/* Estado Supabase (cliente) */}
           <SupabaseStatusClient orgId={orgId} />
-                   {!user && (
+          {!user && (
             <Link
-             href="/login"
+              href="/login"
               className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
               title="Iniciar sesión"
             >
