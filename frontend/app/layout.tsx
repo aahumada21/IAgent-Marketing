@@ -1,5 +1,6 @@
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import AppHeader from "@/components/AppHeader";
 
 export const metadata = {
   title: "AI Ads",
@@ -9,9 +10,12 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body className="min-h-dvh antialiased">
-        <Navbar />
-        {children}
+    <body>
+        {/* Header global con saldo y estado de Supabase */}
+        <AppHeader />
+        <div className="mx-auto max-w-6xl px-4 py-6">
+          {children}
+        </div>
       </body>
     </html>
   );
