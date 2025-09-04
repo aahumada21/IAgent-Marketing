@@ -1,6 +1,7 @@
+// frontend/app/(auth)/login/page.tsx
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -12,12 +13,6 @@ export default function LoginPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/dashboard");
-    });
-  }, [router]);
-
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setPending(true);
@@ -25,7 +20,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setPending(false);
     if (error) return setError(error.message);
-    router.push("/dashboard");
+    router.push("/dashboard"); // ajusta a tu ruta post-login
   };
 
   return (
@@ -73,6 +68,18 @@ export default function LoginPage() {
           {pending ? "Ingresando…" : "Ingresar"}
         </button>
       </form>
+
+      {/* Opcional: OAuth */}
+      {/* <div className="mt-6">
+        <button
+          onClick={async () => {
+            await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/dashboard` } });
+          }}
+          className="w-full rounded-lg border px-4 py-2"
+        >
+          Continuar con Google
+        </button>
+      </div> */}
     </div>
   );
 }

@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -22,19 +23,34 @@ export default function LoginPage() {
     e.preventDefault();
     setPending(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setInfo(null);
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo:
+          typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
+      },
+    });
+
     setPending(false);
     if (error) return setError(error.message);
+
+    if (data?.user && !data.user.confirmed_at) {
+      setInfo("Te enviamos un correo para confirmar tu cuenta. Revisa tu bandeja y continúa desde allí.");
+      return;
+    }
     router.push("/dashboard");
   };
 
   return (
     <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow">
-      <h1 className="mb-1 text-2xl font-semibold">Iniciar sesión</h1>
+      <h1 className="mb-1 text-2xl font-semibold">Crear cuenta</h1>
       <p className="mb-6 text-sm text-neutral-500">
-        ¿Aún no tienes cuenta?{" "}
-        <Link href="/register" className="text-blue-600 hover:underline">
-          Crear cuenta
+        ¿Ya tienes cuenta?{" "}
+        <Link href="/login" className="text-blue-600 hover:underline">
+          Iniciar sesión
         </Link>
       </p>
 
@@ -59,18 +75,19 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            autoComplete="current-password"
+            autoComplete="new-password"
           />
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {info && <p className="text-sm text-green-700">{info}</p>}
 
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-60"
+          className="w-full rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white disabled:opacity-60"
         >
-          {pending ? "Ingresando…" : "Ingresar"}
+          {pending ? "Creando…" : "Crear cuenta"}
         </button>
       </form>
     </div>
