@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase } from "../../lib/supabase/client";
 
 type OrgRow = { id: string; name: string };
 type MemberRow = { organization_id: string; role: "owner" | "admin" | "member" };
-type ProjectRow = { id: string; name: string; organization_id: string };
+type ProjectRow = { id: string; name: string; org_id: string };
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<{ id: string; email: string | null } | null>(null);
-
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [memberships, setMemberships] = useState<MemberRow[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
@@ -18,7 +17,6 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  // forms
   const [orgName, setOrgName] = useState("");
   const [projectName, setProjectName] = useState("");
 
@@ -39,10 +37,10 @@ export default function DashboardPage() {
       }
       setMe({ id: userData.user.id, email: userData.user.email ?? null });
 
-      // Mis memberships
+      // memberships (alias organization_id <- org_id)
       const { data: mrows, error: mErr } = await supabase
         .from("members")
-        .select("organization_id, role")
+        .select("organization_id:org_id, role")
         .eq("user_id", userData.user.id);
 
       if (mErr) {
@@ -52,8 +50,8 @@ export default function DashboardPage() {
       }
       setMemberships((mrows ?? []) as MemberRow[]);
 
-      // Orgs asociadas (vía IDs)
-      const orgIds = (mrows ?? []).map((m) => m.organization_id);
+      // cargar orgs por id
+      const orgIds = (mrows ?? []).map((m: any) => m.organization_id);
       let orgList: OrgRow[] = [];
       if (orgIds.length) {
         const { data: orows, error: oErr } = await supabase
@@ -70,7 +68,6 @@ export default function DashboardPage() {
       }
       setOrgs(orgList);
 
-      // Selección por defecto
       if (orgList.length) setSelectedOrgId(orgList[0].id);
 
       setLoading(false);
@@ -79,27 +76,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!selectedOrgId) return;
-    // balance de créditos
-    (async () => {
-      const { data, error } = await supabase
-        .from("credit_ledger")
-        .select("amount")
-        .eq("organization_id", selectedOrgId);
 
+    // balance via RPC
+    (async () => {
+      const { data, error } = await supabase.rpc("get_org_credit_balance", { p_org: selectedOrgId });
       if (error) {
         setErr(error.message);
         return;
       }
-      const sum = (data ?? []).reduce((acc, r: any) => acc + (r.amount ?? 0), 0);
-      setCredits(sum);
+      setCredits((data as number) ?? 0);
     })();
 
     // proyectos de la org
     (async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, name, organization_id")
-        .eq("organization_id", selectedOrgId)
+        .select("id, name, org_id")
+        .eq("org_id", selectedOrgId)
         .order("name", { ascending: true });
 
       if (error) {
@@ -112,12 +105,11 @@ export default function DashboardPage() {
 
   const createOrg = async () => {
     setErr(null);
-    if (!orgName.trim()) return;
+    if (!orgName.trim() || !me) return;
 
-    // 1) crear organización (owner_id debería setearse a auth.uid() vía default/trigger)
     const { data: orgIns, error: orgErr } = await supabase
       .from("organizations")
-      .insert({ name: orgName })
+      .insert({ name: orgName, owner_id: me.id })
       .select()
       .single();
 
@@ -126,17 +118,7 @@ export default function DashboardPage() {
       return;
     }
 
-    // 2) asegurar membresía owner
-    const { error: memErr } = await supabase.from("members").insert({
-      organization_id: orgIns.id,
-      user_id: me!.id,
-      role: "owner",
-    });
-    if (memErr) {
-      setErr(memErr.message);
-      return;
-    }
-
+    // trigger agrega owner a members
     setOrgs((prev) => [...prev, { id: orgIns.id, name: orgIns.name }]);
     setMemberships((prev) => [...prev, { organization_id: orgIns.id, role: "owner" }]);
     setSelectedOrgId(orgIns.id);
@@ -145,11 +127,11 @@ export default function DashboardPage() {
 
   const createProject = async () => {
     setErr(null);
-    if (!selectedOrgId || !projectName.trim()) return;
+    if (!selectedOrgId || !projectName.trim() || !me) return;
 
     const { data, error } = await supabase
       .from("projects")
-      .insert({ name: projectName, organization_id: selectedOrgId })
+      .insert({ name: projectName, org_id: selectedOrgId, created_by: me.id })
       .select()
       .single();
 
@@ -164,23 +146,16 @@ export default function DashboardPage() {
   const topUp = async (amount: number) => {
     if (!selectedOrgId) return;
     try {
-      // Llama a tu función existente add_credits(org_id uuid, amount int, reason text)
-      // Si tus nombres de parámetros difieren, ajusta aquí.
       const { error } = await supabase.rpc("add_credits", {
-        org_id: selectedOrgId,
-        amount,
-        reason: `Manual top-up (${amount})`,
-      } as any);
+        p_org: selectedOrgId,
+        p_amount: amount,
+        p_reason: `Manual top-up (${amount})`,
+      });
       if (error) throw error;
 
-      // refresca balance
-      const { data, error: sErr } = await supabase
-        .from("credit_ledger")
-        .select("amount")
-        .eq("organization_id", selectedOrgId);
-      if (sErr) throw sErr;
-      const sum = (data ?? []).reduce((acc, r: any) => acc + (r.amount ?? 0), 0);
-      setCredits(sum);
+      const { data, error: bErr } = await supabase.rpc("get_org_credit_balance", { p_org: selectedOrgId });
+      if (bErr) throw bErr;
+      setCredits((data as number) ?? 0);
     } catch (e: any) {
       setErr(e.message ?? "Error al cargar créditos");
     }
@@ -198,16 +173,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Mis organizaciones */}
       <section className="rounded-xl border bg-white p-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Tus organizaciones</h2>
-            <p className="text-sm text-neutral-500">
-              Selecciona una para ver créditos y proyectos, o crea una nueva.
-            </p>
+            <p className="text-sm text-neutral-500">Selecciona una o crea nueva.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {orgs.map((o) => (
               <button
                 key={o.id}
@@ -236,7 +208,6 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Créditos y acciones */}
       {selectedOrgId && (
         <section className="rounded-xl border bg-white p-4">
           <div className="flex items-center justify-between">
@@ -270,7 +241,6 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Proyectos */}
       {selectedOrgId && (
         <section className="rounded-xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Proyectos</h2>
