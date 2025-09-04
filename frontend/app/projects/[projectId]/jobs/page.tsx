@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-// ⬇️ usa relativo si el alias @ no funciona en tu proyecto
+// Usa import RELATIVO si "@/lib/..." no te resuelve:
 import { supabase } from "../../../../lib/supabase/client";
 
 type Job = {
@@ -35,7 +35,8 @@ export default function ProjectJobsPage() {
     setLoading(true);
     setError(null);
     try {
-      console.log("[jobs] loading for projectId=", projectId, { from, to });
+      console.log("[jobs] loading projectId=", projectId, { from, to });
+
       const { count, error: countErr } = await supabase
         .from("content_jobs")
         .select("*", { count: "exact", head: true })
@@ -45,37 +46,26 @@ export default function ProjectJobsPage() {
 
       const { data, error } = await supabase
         .from("content_jobs")
-        .select(
-          "id, org_id, project_id, job_type, provider, input_media_url, status, created_by, created_at"
-        )
+        .select("id, org_id, project_id, job_type, provider, input_media_url, status, created_by, created_at")
         .eq("project_id", projectId)
         .order("created_at", { ascending: false })
         .range(from, to);
-
       if (error) throw error;
-      console.log("[jobs] data:", data);
+
+      console.log("[jobs] rows:", data);
       setJobs((data ?? []) as Job[]);
     } catch (e: any) {
-      console.error("[jobs] load error:", e);
+      console.error("[jobs] error:", e);
       setError(e.message ?? "Error cargando jobs.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    setPage(1);
-  }, [projectId]);
+  useEffect(() => { setPage(1); }, [projectId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId, page]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, page]);
-
-  const maxPage = useMemo(() => {
-    if (total == null) return 1;
-    return Math.max(1, Math.ceil(total / PAGE_SIZE));
-  }, [total]);
+  const maxPage = useMemo(() => (total == null ? 1 : Math.max(1, Math.ceil(total / PAGE_SIZE))), [total]);
 
   return (
     <main className="mx-auto max-w-6xl p-6 space-y-6">
@@ -87,30 +77,18 @@ export default function ProjectJobsPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <a
-            href={`/ads?project_id=${encodeURIComponent(String(projectId))}`}
-            className="px-3 py-2 rounded-md border"
-          >
-            Volver a ADS
-          </a>
-          <button
-            className="px-3 py-2 rounded-md border"
-            onClick={() => load()}
-            disabled={loading}
-          >
+          <a href={`/ads?project_id=${encodeURIComponent(String(projectId))}`} className="px-3 py-2 rounded-md border">Volver a ADS</a>
+          <button className="px-3 py-2 rounded-md border" onClick={() => load()} disabled={loading}>
             {loading ? "Cargando…" : "Recargar"}
           </button>
         </div>
       </header>
 
-      {/* aviso si no hay sesión (para evitar pantalla vacía por RLS) */}
-      <AuthWarning />
+      <div className="text-xs text-gray-600">
+        Asegúrate de estar logueado y de ser miembro de la organización del proyecto; si no, RLS devolverá 0 filas.
+      </div>
 
-      {error && (
-        <div className="text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-sm text-red-600">{error}</div>}
 
       <section className="border rounded-2xl overflow-hidden">
         <div className="grid grid-cols-12 bg-gray-50 text-xs font-medium px-4 py-2">
@@ -123,9 +101,7 @@ export default function ProjectJobsPage() {
         {loading ? (
           <div className="p-6 text-sm text-gray-600">Cargando…</div>
         ) : jobs.length === 0 ? (
-          <div className="p-6 text-sm text-gray-600">
-            No hay jobs aún para este proyecto.
-          </div>
+          <div className="p-6 text-sm text-gray-600">No hay jobs aún para este proyecto.</div>
         ) : (
           <ul className="divide-y">
             {jobs.map((j) => (
@@ -133,20 +109,10 @@ export default function ProjectJobsPage() {
                 <div className="col-span-3">
                   <MediaThumb url={j.input_media_url} jobType={j.job_type} />
                 </div>
-                <div className="col-span-2">
-                  <Badge>{j.job_type ?? "-"}</Badge>
-                </div>
-                <div className="col-span-2">
-                  <Badge tone={j.provider === "veo3" ? "success" : "muted"}>
-                    {j.provider ?? "-"}
-                  </Badge>
-                </div>
-                <div className="col-span-2">
-                  <StatusBadge status={j.status ?? "draft"} />
-                </div>
-                <div className="col-span-3 text-sm text-gray-700">
-                  {new Date(j.created_at).toLocaleString()}
-                </div>
+                <div className="col-span-2"><Badge>{j.job_type ?? "-"}</Badge></div>
+                <div className="col-span-2"><Badge tone={j.provider === "veo3" ? "success" : "muted"}>{j.provider ?? "-"}</Badge></div>
+                <div className="col-span-2"><StatusBadge status={j.status ?? "draft"} /></div>
+                <div className="col-span-3 text-sm text-gray-700">{new Date(j.created_at).toLocaleString()}</div>
               </li>
             ))}
           </ul>
@@ -154,70 +120,26 @@ export default function ProjectJobsPage() {
       </section>
 
       <footer className="flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          {total ?? 0} resultado{(total ?? 0) === 1 ? "" : "s"}
-        </div>
+        <div className="text-sm text-gray-600">{total ?? 0} resultado{(total ?? 0) === 1 ? "" : "s"}</div>
         <div className="flex items-center gap-2">
-          <button
-            className="px-3 py-1 rounded-md border disabled:opacity-50"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1 || loading}
-          >
-            Anterior
-          </button>
-          <span className="text-sm">
-            Página {page} / {maxPage}
-          </span>
-          <button
-            className="px-3 py-1 rounded-md border disabled:opacity-50"
-            onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
-            disabled={page >= maxPage || loading}
-          >
-            Siguiente
-          </button>
+          <button className="px-3 py-1 rounded-md border disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>Anterior</button>
+          <span className="text-sm">Página {page} / {maxPage}</span>
+          <button className="px-3 py-1 rounded-md border disabled:opacity-50" onClick={() => setPage((p) => Math.min(maxPage, p + 1))} disabled={page >= maxPage || loading}>Siguiente</button>
         </div>
       </footer>
     </main>
   );
 }
 
-function AuthWarning() {
-  // Mensaje simple para recordar sesión (útil con RLS)
-  return (
-    <div className="text-xs text-gray-600">
-      Asegúrate de estar <b>logueado</b> y de ser <b>miembro</b> de la organización del proyecto; de lo contrario, RLS devolverá 0 filas.
-    </div>
-  );
-}
-
 function MediaThumb({ url, jobType }: { url: string | null; jobType: Job["job_type"] }) {
   if (!url) return <div className="text-xs text-gray-500">Sin media</div>;
-  if (jobType === "video") {
-    return (
-      <video src={url} className="w-32 h-20 object-cover rounded border" controls />
-    );
-  }
+  if (jobType === "video") return <video src={url} className="w-32 h-20 object-cover rounded border" controls />;
   return <img src={url} alt="media" className="w-32 h-20 object-cover rounded border" />;
 }
 
-function Badge({
-  children,
-  tone = "default",
-}: {
-  children: any;
-  tone?: "default" | "success" | "muted";
-}) {
-  const cls =
-    tone === "success"
-      ? "bg-green-100 text-green-800"
-      : tone === "muted"
-      ? "bg-gray-100 text-gray-700"
-      : "bg-blue-100 text-blue-800";
-  return (
-    <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${cls}`}>
-      {children}
-    </span>
-  );
+function Badge({ children, tone = "default" }: { children: any; tone?: "default" | "success" | "muted" }) {
+  const cls = tone === "success" ? "bg-green-100 text-green-800" : tone === "muted" ? "bg-gray-100 text-gray-700" : "bg-blue-100 text-blue-800";
+  return <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${cls}`}>{children}</span>;
 }
 
 function StatusBadge({ status }: { status: NonNullable<Job["status"]> }) {
@@ -229,16 +151,9 @@ function StatusBadge({ status }: { status: NonNullable<Job["status"]> }) {
     failed: { label: "Fallido", tone: "danger" },
   };
   const toneCls =
-    map[status]?.tone === "success"
-      ? "bg-green-100 text-green-800"
-      : map[status]?.tone === "danger"
-      ? "bg-red-100 text-red-800"
-      : map[status]?.tone === "muted"
-      ? "bg-gray-100 text-gray-700"
-      : "bg-blue-100 text-blue-800";
-  return (
-    <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${toneCls}`}>
-      {map[status]?.label ?? status}
-    </span>
-  );
+    map[status]?.tone === "success" ? "bg-green-100 text-green-800" :
+    map[status]?.tone === "danger"  ? "bg-red-100 text-red-800" :
+    map[status]?.tone === "muted"   ? "bg-gray-100 text-gray-700" :
+                                      "bg-blue-100 text-blue-800";
+  return <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${toneCls}`}>{map[status]?.label ?? status}</span>;
 }
