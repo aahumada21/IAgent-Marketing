@@ -1,43 +1,78 @@
 "use client";
+
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/utils/supabaseClient";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 export default function Navbar() {
+  const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setEmail(s?.user?.email ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      // 1) Estado inicial
+      const { data } = await supabase.auth.getSession();
+      setEmail(data.session?.user?.email ?? null);
+
+      // 2) Suscripción a cambios de sesión (login/logout/refresh)
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        setEmail(session?.user?.email ?? null);
+      });
+
+      unsubscribe = () => sub.subscription.unsubscribe();
+    })();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
-  async function logout() {
-    await supabase.auth.signOut();
-    // Opcional: redirige al home
-    window.location.href = "/";
-  }
+  const handleLogout = async () => {
+    try {
+      setSigningOut(true);
+      await supabase.auth.signOut();
+      // En App Router, esto basta para re-render del Client Component
+      router.push("/login");
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   return (
-    <header className="w-full border-b bg-white">
-      <nav className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
-        <a href="/" className="font-bold text-lg">AI Ads</a>
-        <div className="flex items-center gap-4 text-sm">
-          <a href="/projects" className="hover:underline">Proyectos</a>
-          <a href="/dashboard" className="hover:underline">Panel</a>
-          {email ? (
-            <>
-              <span className="opacity-70">{email}</span>
-              <button onClick={logout} className="border px-3 py-1 rounded hover:bg-gray-100">
-                Salir
-              </button>
-            </>
-          ) : (
-            <a href="/login" className="border px-3 py-1 rounded hover:bg-gray-100">Entrar</a>
-          )}
-        </div>
-      </nav>
-    </header>
+    <nav className="w-full h-14 border-b flex items-center px-4 justify-between bg-white">
+      <Link href="/" className="font-semibold">IAgent Marketing</Link>
+
+      <div className="flex items-center gap-2">
+        {email ? (
+          <>
+            <Link href="/dashboard" className="rounded-lg px-3 py-1.5 border hover:bg-neutral-50">
+              Dashboard
+            </Link>
+            <span className="text-sm text-neutral-600">{email}</span>
+            <button
+              onClick={handleLogout}
+              disabled={signingOut}
+              className="rounded-lg px-3 py-1.5 bg-neutral-900 text-white hover:opacity-90 disabled:opacity-60"
+              title="Cerrar sesión"
+            >
+              {signingOut ? "Cerrando…" : "Cerrar sesión"}
+            </button>
+          </>
+        ) : (
+          <>
+            <Link href="/login" className="rounded-lg px-3 py-1.5 border hover:bg-neutral-50">
+              Iniciar sesión
+            </Link>
+            <Link href="/register" className="rounded-lg px-3 py-1.5 bg-blue-600 text-white hover:opacity-90">
+              Crear cuenta
+            </Link>
+          </>
+        )}
+      </div>
+    </nav>
   );
 }
